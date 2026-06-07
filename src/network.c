@@ -503,7 +503,13 @@ int imquic_network_send_packet(imquic_network_endpoint *ne) {
 	int if_index = 0, ret = 0;
 	while((ret = picoquic_prepare_next_packet(ne->qc, picoquic_current_time(),
 			buffer, sizeof(buffer), &blen, &to, &from, &if_index, NULL, NULL)) == 0 && blen > 0) {
-		int sent = sendto(ne->fd, buffer, blen, 0, (struct sockaddr *)&to, sizeof(to));
+		/* macOS/BSD sendto() strictly validates the address length against the
+		 * socket address family (EINVAL otherwise), unlike Linux which tolerates
+		 * sizeof(sockaddr_storage). Derive the correct length from the family. */
+		socklen_t tolen = (to.ss_family == AF_INET6)
+			? sizeof(struct sockaddr_in6)
+			: sizeof(struct sockaddr_in);
+		int sent = sendto(ne->fd, buffer, blen, 0, (struct sockaddr *)&to, tolen);
 		if(sent < 0) {
 			IMQUIC_LOG(IMQUIC_LOG_ERR, "Error in sendto... %d (%s)\n", errno, g_strerror(errno));
 		} else {
