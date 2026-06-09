@@ -188,6 +188,12 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
  * @param blen Size of the data to process  */
 void imquic_http3_process_datagram(imquic_connection *conn, uint8_t *bytes, size_t blen);
 
+/*! \brief Whether a stream is the WebTransport session (extended CONNECT request) stream
+ * @param conn The imquic_connection the stream belongs to
+ * @param stream_id The stream ID to check
+ * @returns TRUE if this is the WebTransport session stream, FALSE otherwise */
+gboolean imquic_http3_is_webtransport_session_stream(imquic_connection *conn, uint64_t stream_id);
+
 /** @name Parsing HTTP/3 messages
  */
 ///@{

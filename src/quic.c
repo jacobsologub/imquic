@@ -15,6 +15,7 @@
 
 #include "internal/quic.h"
 #include "internal/qlog.h"
+#include "internal/http3.h"
 #include "imquic/debug.h"
 
 /* picoquic stream callback as a string (for debugging purposes) */
@@ -329,6 +330,19 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 		if(fin_or_event == picoquic_callback_stream_fin)
 			imquic_stream_mark_complete(stream, TRUE);
 		imquic_mutex_unlock(&conn->mutex);
+		/* When the peer FINs the WebTransport session (extended CONNECT request)
+		 * stream, the WebTransport session is over even though the underlying
+		 * QUIC connection lingers (browsers half-close this stream on tab
+		 * refresh/close and let the connection idle-time out ~30s later). Notify
+		 * the application that the connection is gone so sessions tear down
+		 * promptly. notify_gone is idempotent (notified_close CAS), so the later
+		 * idle-timeout close path is harmless. */
+		if(fin_or_event == picoquic_callback_stream_fin &&
+				imquic_http3_is_webtransport_session_stream(conn, stream_id)) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] WebTransport session stream %"SCNu64" closed by peer\n",
+				name, stream_id);
+			imquic_connection_notify_gone(conn, 0, "WebTransport session closed");
+		}
 		if(conn->http3 != NULL) {
 			/* Process the data as HTTP/3 */
 			imquic_http3_process_stream_data(conn, stream, bytes, blen, new_stream);
@@ -351,6 +365,13 @@ static int imquic_quic_stream_callback(picoquic_cnx_t *pconn,
 				stream->in_state = IMQUIC_STREAM_RESET;
 		}
 		imquic_mutex_unlock(&conn->mutex);
+		/* A RESET on the WebTransport session stream means the session is gone,
+		 * same as a FIN — handle it identically (idempotent via notified_close). */
+		if(imquic_http3_is_webtransport_session_stream(conn, stream_id)) {
+			IMQUIC_LOG(IMQUIC_LOG_INFO, "[%s] WebTransport session stream %"SCNu64" reset by peer\n",
+				name, stream_id);
+			imquic_connection_notify_gone(conn, 0, "WebTransport session reset");
+		}
 		/* Pass the data to the application callback */
 		if(endpoint->reset_stream_incoming)
 			endpoint->reset_stream_incoming(conn, stream_id, error_code);

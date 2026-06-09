@@ -405,6 +405,16 @@ void imquic_http3_process_stream_data(imquic_connection *conn, imquic_stream *st
 	}
 }
 
+gboolean imquic_http3_is_webtransport_session_stream(imquic_connection *conn, uint64_t stream_id) {
+	if(conn == NULL || conn->http3 == NULL)
+		return FALSE;
+	imquic_http3_connection *h3c = conn->http3;
+	/* The WebTransport session is carried by the (extended CONNECT) request
+	 * stream. When the peer FINs/resets that stream, the WebTransport session
+	 * is over even though the underlying QUIC connection may linger. */
+	return h3c->webtransport && h3c->request_stream_set && stream_id == h3c->request_stream;
+}
+
 void imquic_http3_process_datagram(imquic_connection *conn, uint8_t *bytes, size_t blen) {
 	if(conn == NULL || conn->http3 == NULL || bytes == NULL || blen == 0)
 		return;
